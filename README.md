@@ -1,5 +1,5 @@
 # Overview
-Here you'll find a production (soon) grade sample of using Discord's API 
+Here you'll find an almost production grade sample of using Discord's API 
 and local RPC socket to add Voice and Text chat to a match based multiplayer 
 game.
 
@@ -13,6 +13,24 @@ This sample is basically two files that show the different parts of the workflow
 
 Good luck & have fun!
 
+### Additional Best Practices
+This sample demonstrates a good workflow for using the Discord API & RPC 
+but does not have the entirety of what represents production quality 
+code. You should make sure to handle at minimum these scenarios if 
+you're adapting this into your project:
+
+1. All HTTP requests from your game client to your game server could 
+ fail and should retry a few times.
+2. All HTTP requests to the Discord API backend from your game server 
+ or game client could fail and you should retry.
+3. All HTTP requests via the Discord RPC.Proxy (discordapp.io) could
+ fail and you should retry a few times.
+4. Your game server should hold the user's `Refresh Token` and `Expiry`, 
+ in addition to the `Access Token` used in this sample. If the user 
+ attempts to do something and the `Expiry` timestamp has passed - you 
+ should request a new access token using the refresh token as described 
+ here https://discordapp.com/developers/docs/topics/oauth2#implementing-oauth2.
+ 
 # Trying out this Sample
 
 ### Creating a Discord Application
