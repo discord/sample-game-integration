@@ -154,9 +154,8 @@ class App extends Component {
   createMatch() {
     request
       .post(`${ENDPOINT}/create_match`)
-      .then((res) => {
-        console.log(res);
-        this.setState({guildId: JSON.parse(res.text).guild_id});
+      .then(({text}) => {
+        this.setState({gameId: JSON.parse(text).game_id});
       },
       this.handleError.bind(this)
     );
@@ -164,20 +163,21 @@ class App extends Component {
 
   joinMatch() {
     request
-      .post(`${ENDPOINT}/join_match`)
+      .post(`${ENDPOINT}/join_match/${this.state.gameId}`)
       .send({id: MY_USER_NAME, discord_id: this.state.discordUserId})
       .then(({text}) => {
         // citron note: We are attempting to wait for the new match server to be loaded by the Discord
         // client before requesting channels from it. Ideally, Discord would just hold this request until
         // the server arrives & then return.
         window.setTimeout(() => {
-          const guild_id = JSON.parse(text).guild_id;
-          this.call('GET_CHANNELS', {guild_id}, (response) => {
+          const guildId = JSON.parse(text).guild_id;
+          this.setState({guildId});
+          this.call('GET_CHANNELS', {guild_id: guildId}, (response) => {
             const first_voice_channel = response.data.channels[1];
             this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id});
-            this.subscribe('MESSAGE_CREATE', {'channel_id': this.state.guildId});
-            this.subscribe('MESSAGE_UPDATE', {'channel_id': this.state.guildId});
-            this.subscribe('MESSAGE_DELETE', {'channel_id': this.state.guildId});
+            this.subscribe('MESSAGE_CREATE', {'channel_id': guildId});
+            this.subscribe('MESSAGE_UPDATE', {'channel_id': guildId});
+            this.subscribe('MESSAGE_DELETE', {'channel_id': guildId});
           });
         }, 500);
       },
@@ -186,7 +186,7 @@ class App extends Component {
   }
 
   endMatch() {
-    this.setState({guildId: null});
+    this.setState({gameId: null, guildId: null});
     request.post(`${ENDPOINT}/end_match`).end();
   }
 
@@ -218,7 +218,7 @@ class App extends Component {
   // Make It Pretty
   // ----------------------------------------------------------------------------------------
   render() {
-    const {guildId, loggedIn, connected} = this.state;
+    const {guildId, gameId, loggedIn, connected} = this.state;
 
     const lines = this.state.lines.map((message) => {
       return <div key={message.id} className="line">{message.author.username}: {message.content}</div>
@@ -228,9 +228,9 @@ class App extends Component {
       <div className="App">
         <div className="status">{this.state.message}</div>
         <div className={classnames('button', {disabled: connected})} onClick={this.connect.bind(this)}>Connect to Discord</div>
-        <div className={classnames('button', {disabled: !connected || !loggedIn || guildId})} onClick={this.createMatch.bind(this)}>Create Match</div>
-        <div className={classnames('button', {disabled: !guildId})} onClick={this.joinMatch.bind(this)}>Join Match</div>
-        <div className={classnames('button', {disabled: !guildId})} onClick={this.endMatch.bind(this)}>End Match</div>
+        <div className={classnames('button', {disabled: !connected || !loggedIn || gameId})} onClick={this.createMatch.bind(this)}>Create Match</div>
+        <div className={classnames('button', {disabled: !gameId || guildId})} onClick={this.joinMatch.bind(this)}>Join Match</div>
+        <div className={classnames('button', {disabled: !gameId || !guildId})} onClick={this.endMatch.bind(this)}>End Match</div>
         <div className={classnames('button', {disabled: !connected})} onClick={this.disconnect.bind(this)}>Disconnect</div>
         <div className="chatarea">
           <div className="lines">

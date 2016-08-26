@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, abort
 import json
 import requests
 from flask_cors import CORS
@@ -31,11 +31,14 @@ class User:
         self.refresh_token = None
         self.access_token = None
 
+
 class Game:
     def __init__(self):
+        self.id = 0
         self.guild_id = None
 
 data = {
+    'counter': 0,
     'games': [],    # Game
     'users': {}     # User
 }
@@ -48,6 +51,12 @@ except:
 
 def save():
     pickle.dump(data, open('discord-server.p', 'wb'))
+
+
+def create_id():
+    new_id = data['counter'] + 1
+    data['counter'] = new_id
+    return str(new_id)
 
 
 ############################################################
@@ -83,42 +92,44 @@ MANAGE_ROLES = 0x10000000
 ############################################################
 @app.route('/create_match', methods=['POST'])
 def create_match():
-    delete_all_games()
-
-    permissions = (READ_MESSAGES | SEND_MESSAGES | READ_MESSAGE_HISTORY | CONNECT | SPEAK | USE_VAD)
-    create_match_data = {
-        'name': 'Testing This',
-        'region': 'us-west',
-        'icon': '',
-        'roles': [
-            {
-                'id': 0,
-                'p': permissions
-            }
-        ]
-    }
-    r = requests.post(BASE_URL + '/guilds', headers=HEADERS, json=create_match_data)
-    print r.text
-    r.raise_for_status()
-    guild_id = r.json()['id']
-
     game = Game()
-    game.guild_id = guild_id
+    game.id = create_id()
+    game.guild_id = None
     data['games'].append(game)
     save()
 
     return json.dumps({
-        'guild_id': guild_id
+        'game_id': game.id
     })
 
 
-@app.route('/join_match', methods=['POST'])
-def join_match():
+@app.route('/join_match/<game_id>', methods=['POST'])
+def join_match(game_id):
     user = data['users'][request.get_json()['id']]
     discord_id = request.get_json()['discord_id']
 
-    game = data['games'][0]
+    game = next((g for g in data['games'] if g.id == game_id), None)
+    if game is None:
+        abort(404, 'Invalid game_id')
+
     guild_id = game.guild_id
+
+    if guild_id is None:
+        permissions = (READ_MESSAGES | SEND_MESSAGES | READ_MESSAGE_HISTORY | CONNECT | SPEAK | USE_VAD)
+        create_match_data = {
+            'name': 'Testing This',
+            'region': 'us-west',
+            'icon': '',
+            'roles': [{
+                'id': 0,
+                'p': permissions
+            }]
+        }
+        r = requests.post(BASE_URL + '/guilds', headers=HEADERS, json=create_match_data)
+        r.raise_for_status()
+        guild_id = r.json()['id']
+        game.guild_id = guild_id
+        save()
 
     add_to_server = {
         'access_token': user.access_token
@@ -146,7 +157,6 @@ def delete_all_games():
     for guild in guilds:
         if guild['owner'] is True:
             r = requests.delete(BASE_URL + '/guilds/{0}'.format(guild['id']), headers=HEADERS)
-            print 'deleting', guild['name']
             r.raise_for_status()
 
     return ''
