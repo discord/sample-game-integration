@@ -19,18 +19,65 @@ but does not have the entirety of what represents production quality
 code. You should make sure to handle at minimum these scenarios if 
 you're adapting this into your project:
 
-1. All HTTP requests from your game client to your game server could 
+1. Check if Discord is present on the user's machine. If so, continue on. 
+ Otherwise you'll want to prompt the user to install Discord.
+2. All HTTP requests from your game client to your game server could 
  fail and should retry a few times.
-2. All HTTP requests to the Discord API backend from your game server 
+3. All HTTP requests to the Discord API backend from your game server 
  or game client could fail and you should retry.
-3. All HTTP requests via the Discord RPC.Proxy (discordapp.io) could
+4. All HTTP requests via the Discord RPC.Proxy (discordapp.io) could
  fail and you should retry a few times.
-4. Your game server should hold the user's `Refresh Token` and `Expiry`, 
+5. Your game server should hold the user's `Refresh Token` and `Expiry`, 
  in addition to the `Access Token` used in this sample. If the user 
  attempts to do something and the `Expiry` timestamp has passed - you 
  should request a new access token using the refresh token as described 
  here https://discordapp.com/developers/docs/topics/oauth2#implementing-oauth2.
+
+# Sample Walkthrough
+To implement match/instance based voice & text chat the basic workflow is as follows:
  
+- Discover if the user has Discord installed on their machine.
+- If not, prompt them to grab the install from discordapp.com/download
+- Connect to the local Discord RPC socket. Be sure to scan the available port range. This is done in
+ the `connect()` function in `client/src/App.js`
+- Once connected:
+  - **if you don't have the user's access token:** you need to get an RPC Token from Discord API to trade 
+     for a user's `code`. Retrive the RPC token as shown in the `/discord_auth` route in `server/index.py`. 
+     Then trade that `rpc_token` for a user's code by calling `AUTHORIZE` over the RPC socket as shown in `App.js`. 
+     Make sure to include the correct OAuth scopes that you intend to use. With the returned code,
+     send it to your server and exchange it for the user's OAuth access and refresh tokens as shown in
+     `/discord_exchange_code`. You should only do this flow the _first_ time a
+     user appears on your system.
+  - **if you ALREADY have the user's access token saved:** you need to check if it has expired
+    by comparing the current time with the `Expiry` you previously retrieved. If it has expired
+    you need to refresh your access token as described here https://discordapp.com/developers/docs/topics/oauth2#implementing-oauth2.
+    This sample doesn't implement token refreshing.
+- Once you have the user's `access_token` in your game client, call `AUTHENTICATE` over the RPC
+ socket as shown in `client/src/App.js`. If you get a success response then you're ready to go.
+- At this point your game will be connected to the local user's Discord Client via the RPC 
+ system and ready to do work.
+- When a user joins a match, on your server, you should create a Discord Guild
+ and put the user in it. Remember: be sure to do this lazily when a game user
+ connects to a match and has Discord. Don't create a guild along with your match.
+ This will cause lots of empty Discord guilds to be sitting around! Check out
+ `/join_match` in `server/index.py` to see an example of lazy creating a guild and 
+ placing the user into it. 
+- Send the new Discord guild id back to the client. This guild will be the container
+ for your match's voice & text chat functionality & used in many of the RPC calls.
+- On the client, now you can assume the Server is in the user's list and ready to go. Begin by
+ making RPC calls to implement whatever features you want. In this sample we are joining a voice channel and
+ connecting to text chat. You can see how this is done in the `joinMatch()` function in `client/src/App.js`.
+- One thing to note is when you subscribe to an event over the RPC you'll get 
+ messages sent to you as things happen in real time. Check out the `handleDiscordRPCResponse()` function
+ in `client/src/App.js` to see an example of how to handle some of these events.
+
+### Sending Messages using the RPC Proxy
+- Sending messages from your game requires using the Discord RPC Proxy. Note that you can invoke
+  almost any endpoint shown at http://discordapp.com/developers as if you were the user using
+  this RPC.Proxy. For an example of how to send text messages as the user check out the `onKeyUp()`
+  function in `client/src/App.js`.
+ 
+  
 # Trying out this Sample
 
 ### Creating a Discord Application
