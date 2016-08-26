@@ -7,6 +7,7 @@ const nonce = require('nonce')();
 const VERSION = '1';
 const CLIENT_ID = '217441586089295872';
 const PORT = 6463;
+const NUM_PORTS_TO_SEARCH = 10;
 const ENCODING = 'json';
 const MY_USER_NAME = 'Jason';
 const ENDPOINT = 'http://localhost:5000';
@@ -133,21 +134,31 @@ class App extends Component {
   // ----------------------------------------------------------------------------------------
   // UI Actions
   // ----------------------------------------------------------------------------------------
-  connect() {
+  connect(ignored, portOffset=0) {
     if (this.socket) {
       this.disconnect();
     }
 
-    this.socket = new WebSocket(`wss://discordapp.io:${PORT}/?v=${VERSION}&client_id=${CLIENT_ID}&encoding=${ENCODING}`);
+    const portAttempt = PORT + portOffset;
+    this.socket = new WebSocket(`wss://discordapp.io:${portAttempt}/?v=${VERSION}&client_id=${CLIENT_ID}&encoding=${ENCODING}`);
 
     this.socket.onmessage = this.handleDiscordRPCResponse.bind(this);
+
+    this.socket.onerror = (e) => {
+      this.setState({'message': `Error ${e}`});
+    };
 
     this.socket.onopen = (e) => {
       this.setState({'message': `Opened ${e}`, connected: true, lines: []});
     };
 
     this.socket.onclose = (e) => {
+      const wasConnected = this.state.connected;
       this.setState({'message': `Closed ${e}`, loggedIn: false, connected: false, guildId: null});
+
+      if (wasConnected == false && portOffset < NUM_PORTS_TO_SEARCH) {
+        this.connect(null, portOffset + 1);
+      }
     };
   }
 
