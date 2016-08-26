@@ -38,7 +38,7 @@ To configure your application to manage voice servers properly do this stuff:
 Be sure to click _Save Changes_ again at the bottom of the page!
 
 **A Very Important Step** Now you will need to e-mail your point of 
-contact at Discord to get your application _Whitelisted._ In your e-mail 
+contact at Discord to get your application _whitelisted._ In your e-mail 
 make sure you send the `Client ID` that is listed in the `APP DETAILS` 
 box up top on your application's detail page.
 
