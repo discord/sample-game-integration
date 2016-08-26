@@ -2,12 +2,13 @@
   "name": "client",
   "version": "0.0.1",
   "private": true,
-  "devDependencies": {
-    "react-scripts": "0.2.2"
-  },
   "dependencies": {
+    "classnames": "^2.2.5",
+    "nonce": "^1.0.4",
     "react": "^15.3.1",
-    "react-dom": "^15.3.1"
+    "react-dom": "^15.3.1",
+    "react-scripts": "0.2.2",
+    "superagent": "^2.2.0"
   },
   "scripts": {
     "start": "react-scripts start",
