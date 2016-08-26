@@ -11,9 +11,11 @@ const ENCODING = 'json';
 const MY_USER_NAME = 'Jason';
 const ENDPOINT = 'http://localhost:5000';
 
+
 class App extends Component {
   constructor(props) {
     super(props);
+    this.handlers = {};
     this.state = {
       message: 'Hello',
       discordUserId: null,
@@ -25,14 +27,22 @@ class App extends Component {
     };
   }
 
+  // ----------------------------------------------------------------------------------------
+  // RPC Socket helper functions
+  // ----------------------------------------------------------------------------------------
   send(payload) {
     this.socket.send(JSON.stringify(payload));
   }
 
-  call(command, args) {
+  call(command, args, handler=null) {
+    let n = nonce();
+    if (handler) {
+      this.handlers[n] = handler;
+    }
+
     this.send({
       'cmd': command,
-      'nonce': nonce(),
+      'nonce': n,
       'args': args
     });
   }
@@ -46,6 +56,9 @@ class App extends Component {
     });
   }
 
+  // ----------------------------------------------------------------------------------------
+  // Response handlers
+  // ----------------------------------------------------------------------------------------
   handleError(err) {
     console.log(err);
     this.setState({message: err.toString()});
@@ -55,7 +68,21 @@ class App extends Component {
     const data = JSON.parse(e.data);
     this.setState({'message': data.cmd});
 
-    if (data.cmd === 'DISPATCH' && data.evt === 'READY') {
+    if (data.nonce) {
+      let handler = this.handlers[data.nonce];
+      if (handler) {
+        delete this.handlers[data.nonce];
+        handler(data);
+        return;
+      }
+    }
+
+    if (data.cmd !== 'DISPATCH') {
+      return;
+    }
+
+    const event = data.evt;
+    if (event === 'READY') {
       request
         .get(`${ENDPOINT}/discord_auth`)
         .then((res) => {
@@ -63,49 +90,49 @@ class App extends Component {
             'client_id': CLIENT_ID,
             'scopes': ['rpc.api', 'identify', 'rpc', 'guilds.join'],
             rpc_token: JSON.parse(res.text).rpc_token
+          },
+          (response) => {
+            request
+              .post(`${ENDPOINT}/discord_exchange_code`)
+              .send({code: response.data.code, id: MY_USER_NAME})
+              .then(({text}) => {
+                const access_token = JSON.parse(text).access_token;
+                this.setState({accessToken: access_token});
+                this.call('AUTHENTICATE', {access_token}, (response) => {
+                  this.setState({
+                    discordUserId: response.data.user.id,
+                    message: response.data.user.username,
+                    loggedIn: true
+                  });
+                });
+              },
+              this.handleError.bind(this)
+            );
           });
         },
-        this.handleError.bind(this));
+        this.handleError.bind(this)
+      );
     }
-    else if(data.cmd === 'AUTHORIZE') {
-      request
-        .post(`${ENDPOINT}/discord_exchange_code`)
-        .send({code: data.data.code, id: MY_USER_NAME})
-        .then((res) => {
-          const access_token = JSON.parse(res.text).access_token;
-          this.setState({accessToken: access_token});
-          this.call('AUTHENTICATE', {access_token});
-        },
-        this.handleError.bind(this));
-    }
-    else if(data.cmd === 'AUTHENTICATE') {
-      this.setState({discordUserId: data.data.user.id, message: data.data.user.username, loggedIn: true})
-    }
-    else if(data.cmd === 'GET_CHANNELS') {
-      const first_voice_channel = data.data.channels[1];
-      this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id});
-
-      this.subscribe('MESSAGE_CREATE', {'channel_id': this.state.guildId});
-      this.subscribe('MESSAGE_UPDATE', {'channel_id': this.state.guildId});
-      this.subscribe('MESSAGE_DELETE', {'channel_id': this.state.guildId});
-    }
-    else if(data.cmd === 'DISPATCH' && data.evt === 'MESSAGE_CREATE') {
+    else if(event === 'MESSAGE_CREATE') {
       let lines = this.state.lines.slice();
       lines.push(data.data.message);
       this.setState({lines});
     }
-    else if(data.cmd === 'DISPATCH' && data.evt === 'MESSAGE_UPDATE') {
+    else if(event === 'MESSAGE_UPDATE') {
       let lines = this.state.lines.slice();
       const index = lines.findIndex((message) => message.id === data.data.message.id);
       lines[index] = data.data.message;
       this.setState({lines});
     }
-    else if(data.cmd === 'DISPATCH' && data.evt === 'MESSAGE_DELETE') {
+    else if(event === 'MESSAGE_DELETE') {
       let lines = this.state.lines.filter((message) => message.id !== data.data.message.id);
       this.setState({lines});
     }
   }
 
+  // ----------------------------------------------------------------------------------------
+  // UI Actions
+  // ----------------------------------------------------------------------------------------
   connect() {
     if (this.socket) {
       this.disconnect();
@@ -131,24 +158,31 @@ class App extends Component {
         console.log(res);
         this.setState({guildId: JSON.parse(res.text).guild_id});
       },
-      this.handleError.bind(this));
+      this.handleError.bind(this)
+    );
   }
 
   joinMatch() {
     request
       .post(`${ENDPOINT}/join_match`)
       .send({id: MY_USER_NAME, discord_id: this.state.discordUserId})
-      .then((res) => {
+      .then(({text}) => {
         // citron note: We are attempting to wait for the new match server to be loaded by the Discord
         // client before requesting channels from it. Ideally, Discord would just hold this request until
         // the server arrives & then return.
         window.setTimeout(() => {
-          const guild_id = JSON.parse(res.text).guild_id;
-          this.call('GET_CHANNELS', {guild_id});
+          const guild_id = JSON.parse(text).guild_id;
+          this.call('GET_CHANNELS', {guild_id}, (response) => {
+            const first_voice_channel = response.data.channels[1];
+            this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id});
+            this.subscribe('MESSAGE_CREATE', {'channel_id': this.state.guildId});
+            this.subscribe('MESSAGE_UPDATE', {'channel_id': this.state.guildId});
+            this.subscribe('MESSAGE_DELETE', {'channel_id': this.state.guildId});
+          });
         }, 500);
       },
-      this.handleError.bind(this));
-
+      this.handleError.bind(this)
+    );
   }
 
   endMatch() {
@@ -158,6 +192,7 @@ class App extends Component {
 
   disconnect() {
     if (this.socket) {
+      this.setState({lines: []});
       this.socket.close();
       this.socket = null;
     }
@@ -179,6 +214,9 @@ class App extends Component {
     }
   }
 
+  // ----------------------------------------------------------------------------------------
+  // Make It Pretty
+  // ----------------------------------------------------------------------------------------
   render() {
     const {guildId, loggedIn, connected} = this.state;
 
