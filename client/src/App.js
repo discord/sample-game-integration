@@ -120,8 +120,11 @@ class App extends Component {
       this.setState({lines});
     }
     else if(event === 'MESSAGE_UPDATE') {
-      let lines = this.state.lines.slice();
       const index = lines.findIndex((message) => message.id === data.data.message.id);
+      if (index === -1) {
+        return;
+      }
+      let lines = this.state.lines.slice();
       lines[index] = data.data.message;
       this.setState({lines});
     }
