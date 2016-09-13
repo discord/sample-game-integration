@@ -4,8 +4,10 @@ import './App.css';
 import classnames from 'classnames';
 const nonce = require('nonce')();
 
+const config = require('json!./../config.json');
+
 const VERSION = '1';
-const CLIENT_ID = '217441586089295872';
+const CLIENT_ID = config.clientId;
 const PORT = 6463;
 const NUM_PORTS_TO_SEARCH = 10;
 const ENCODING = 'json';
@@ -120,7 +122,7 @@ class App extends Component {
       this.setState({lines});
     }
     else if(event === 'MESSAGE_UPDATE') {
-      const index = lines.findIndex((message) => message.id === data.data.message.id);
+      const index = this.state.lines.findIndex((message) => message.id === data.data.message.id);
       if (index === -1) {
         return;
       }
@@ -159,8 +161,13 @@ class App extends Component {
       const wasConnected = this.state.connected;
       this.setState({'message': `Closed ${e}`, loggedIn: false, connected: false, guildId: null});
 
-      if (wasConnected == false && portOffset < NUM_PORTS_TO_SEARCH) {
-        this.connect(null, portOffset + 1);
+      if (wasConnected === false) {
+        if (portOffset < NUM_PORTS_TO_SEARCH) {
+          this.connect(null, portOffset + 1);
+        }
+        else {
+          this.setState({'message': 'Discord is not running or was unable to bind to a local port'});
+        }
       }
     };
   }
@@ -186,12 +193,14 @@ class App extends Component {
         window.setTimeout(() => {
           const guildId = JSON.parse(text).guild_id;
           this.setState({guildId});
-          this.call('GET_CHANNELS', {guild_id: guildId}, (response) => {
-            const first_voice_channel = response.data.channels[1];
-            this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id});
-            this.subscribe('MESSAGE_CREATE', {'channel_id': guildId});
-            this.subscribe('MESSAGE_UPDATE', {'channel_id': guildId});
-            this.subscribe('MESSAGE_DELETE', {'channel_id': guildId});
+          this.call('GET_GUILD', {guild_id: guildId}, () => {
+            this.call('GET_CHANNELS', {guild_id: guildId}, (response) => {
+              const first_voice_channel = response.data.channels[1];
+              this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id});
+              this.subscribe('MESSAGE_CREATE', {'channel_id': guildId});
+              this.subscribe('MESSAGE_UPDATE', {'channel_id': guildId});
+              this.subscribe('MESSAGE_DELETE', {'channel_id': guildId});
+            });
           });
         }, 500);
       },

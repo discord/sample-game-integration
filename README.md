@@ -110,6 +110,11 @@ box up top on your application's detail page.
 In the mean time you can continue setting up your sample environment.
 
 ### Installing the Sample Client
+First you need to clone `client/example.config.json` and rename it to
+`client/config.json` then fill out your application's client ID found
+at https://discordapp.com/developers/applications/me. Only the `Client ID`
+should be set here. The other details will be set on the example server.
+ 
 Installing the client requires only that you have node and npm installed.
 Then, to install project dependencies, from this project's root folder:
 ```
