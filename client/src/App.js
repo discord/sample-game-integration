@@ -197,6 +197,7 @@ class App extends Component {
             this.call('GET_CHANNELS', {guild_id: guildId}, (response) => {
               const first_voice_channel = response.data.channels[1];
               this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id});
+              this.call('SELECT_TEXT_CHANNEL', {'channel_id': guildId});
               this.subscribe('MESSAGE_CREATE', {'channel_id': guildId});
               this.subscribe('MESSAGE_UPDATE', {'channel_id': guildId});
               this.subscribe('MESSAGE_DELETE', {'channel_id': guildId});
