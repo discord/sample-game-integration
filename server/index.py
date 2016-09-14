@@ -108,6 +108,7 @@ def refresh_access_token(user):
     user.expires_at = int(r.json()['expires_in']) + int(time())
     data['users'][user.id] = user
     save()
+    return user
 
 
 ############################################################
@@ -120,6 +121,10 @@ def login():
         abort(400, 'User not found')
 
     user = data['users'][user_id]
+
+    if user.expires_at < time():
+        user = refresh_access_token(user)
+
     return json.dumps({
         'access_token': user.access_token
     })
@@ -167,7 +172,7 @@ def join_match(game_id):
         save()
 
     if user.expires_at < time():
-        refresh_access_token(user)
+        user = refresh_access_token(user)
 
     add_to_server = {
         'access_token': user.access_token
