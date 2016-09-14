@@ -67,6 +67,17 @@ class App extends Component {
     this.setState({message: err.toString()});
   }
 
+  handleGotAccessToken(accessToken) {
+    this.setState({accessToken});
+    this.call('AUTHENTICATE', {access_token: accessToken}, (response) => {
+      this.setState({
+        discordUserId: response.data.user.id,
+        message: response.data.user.username,
+        loggedIn: true
+      });
+    });
+  }
+
   handleDiscordRPCResponse(e) {
     const data = JSON.parse(e.data);
     this.setState({'message': data.cmd});
@@ -87,34 +98,36 @@ class App extends Component {
     const event = data.evt;
     if (event === 'READY') {
       request
-        .get(`${ENDPOINT}/discord_auth`)
-        .then((res) => {
-          this.call('AUTHORIZE', {
-            'client_id': CLIENT_ID,
-            'scopes': ['rpc.api', 'identify', 'rpc', 'guilds.join'],
-            rpc_token: JSON.parse(res.text).rpc_token
+        .post(`${ENDPOINT}/login`)
+        .send({id: MY_USER_NAME})
+        .then(
+          ({text}) => {
+            this.handleGotAccessToken(JSON.parse(text).access_token);
           },
-          (response) => {
+          () => {
             request
-              .post(`${ENDPOINT}/discord_exchange_code`)
-              .send({code: response.data.code, id: MY_USER_NAME})
-              .then(({text}) => {
-                const access_token = JSON.parse(text).access_token;
-                this.setState({accessToken: access_token});
-                this.call('AUTHENTICATE', {access_token}, (response) => {
-                  this.setState({
-                    discordUserId: response.data.user.id,
-                    message: response.data.user.username,
-                    loggedIn: true
-                  });
+              .get(`${ENDPOINT}/discord_auth`)
+              .then((res) => {
+                this.call('AUTHORIZE', {
+                  'client_id': CLIENT_ID,
+                  'scopes': ['rpc.api', 'identify', 'rpc', 'guilds.join'],
+                  rpc_token: JSON.parse(res.text).rpc_token
+                },
+                (response) => {
+                  request
+                    .post(`${ENDPOINT}/discord_exchange_code`)
+                    .send({code: response.data.code, id: MY_USER_NAME})
+                    .then(({text}) => {
+                      this.handleGotAccessToken(JSON.parse(text).access_token)
+                    },
+                    this.handleError.bind(this)
+                  );
                 });
               },
               this.handleError.bind(this)
             );
-          });
-        },
-        this.handleError.bind(this)
-      );
+          }
+        );
     }
     else if(event === 'MESSAGE_CREATE') {
       let lines = this.state.lines.slice();

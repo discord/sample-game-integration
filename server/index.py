@@ -2,6 +2,7 @@ from flask import Flask, request, abort
 import json
 import requests
 from flask_cors import CORS
+from time import time
 import cPickle as pickle
 import ConfigParser
 
@@ -30,6 +31,8 @@ class User:
         self.id = None
         self.refresh_token = None
         self.access_token = None
+        self.expires_at = None
+        self.scope = None
 
 
 class Game:
@@ -44,13 +47,13 @@ data = {
 }
 
 try:
-    data = pickle.load(open('discord-server.p', 'rb'))
+    data = pickle.load(open('discord-sample-db.p', 'rb'))
 except:
     pass
 
 
 def save():
-    pickle.dump(data, open('discord-server.p', 'wb'))
+    pickle.dump(data, open('discord-sample-db.p', 'wb'))
 
 
 def create_id():
@@ -88,8 +91,40 @@ MANAGE_ROLES = 0x10000000
 
 
 ############################################################
+# Helper Functions
+############################################################
+def refresh_access_token(user):
+    refresh_token = {
+        'grant_type': 'refresh_token',
+        'refresh_token': user.refresh_token,
+        'scope': user.scope,
+        'client_id': CLIENT_ID,
+        'client_secret': CLIENT_SECRET
+    }
+    r = requests.post(BASE_URL + '/oauth2/token', headers=HEADERS, data=refresh_token)
+    r.raise_for_status()
+    user.access_token = r.json()['access_token']
+    user.refresh_token = r.json()['refresh_token']
+    user.expires_at = int(r.json()['expires_in']) + int(time())
+    data['users'][user.id] = user
+    save()
+
+
+############################################################
 # Game Match Management Routes
 ############################################################
+@app.route('/login', methods=['POST'])
+def login():
+    user_id = request.get_json()['id']
+    if user_id not in data['users']:
+        abort(400, 'User not found')
+
+    user = data['users'][user_id]
+    return json.dumps({
+        'access_token': user.access_token
+    })
+
+
 @app.route('/create_match', methods=['POST'])
 def create_match():
     game = Game()
@@ -110,7 +145,7 @@ def join_match(game_id):
 
     game = next((g for g in data['games'] if g.id == game_id), None)
     if game is None:
-        abort(404, 'Invalid game_id')
+        abort(400, 'Invalid game_id')
 
     guild_id = game.guild_id
 
@@ -130,6 +165,9 @@ def join_match(game_id):
         guild_id = r.json()['id']
         game.guild_id = guild_id
         save()
+
+    if user.expires_at < time():
+        refresh_access_token(user)
 
     add_to_server = {
         'access_token': user.access_token
@@ -196,6 +234,8 @@ def discord_exchange_token():
     user.id = request.get_json()['id']
     user.access_token = r.json()['access_token']
     user.refresh_token = r.json()['refresh_token']
+    user.expires_at = int(r.json()['expires_in']) + time()
+    user.scope = r.json()['scope']
     data['users'][user.id] = user
     save()
 
