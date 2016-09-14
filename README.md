@@ -41,9 +41,9 @@ To implement match/instance based voice & text chat the basic workflow is as fol
 - Connect to the local Discord RPC socket. Be sure to scan the available port range. This is done in
  the `connect()` function in `client/src/App.js`
 - Once connected:
-  - Check if you have already connected to Discord with this user. To do this, you would want to return
-    a valid access_token when the user Logs In to your game servers. The example `/login` endpoint shows
-    what yours might do. Depending on the results...
+  - Check if you have already authorized Discord for this user. To do this, you should return a valid 
+    Discord `access_token` when the user logs in to your game servers. The example `/login` endpoint shows
+    what your login payload might return. Depending on the results...
   - **if you don't have the user's access token:** you need to get an RPC Token from Discord API to trade 
      for a user's `code`. Retrive the RPC token as shown in the `/discord_auth` route in `server/index.py`. 
      Then trade that `rpc_token` for a user's code by calling `AUTHORIZE` over the RPC socket as shown in `App.js`. 
