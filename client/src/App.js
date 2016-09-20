@@ -28,7 +28,8 @@ class App extends Component {
       connected: false,
       guildId: null,
       lines: [],
-      accessToken: null
+      accessToken: null,
+      voiceUsers: {}
     };
   }
 
@@ -155,6 +156,45 @@ class App extends Component {
       let lines = this.state.lines.filter((message) => message.id !== data.data.message.id);
       this.setState({lines});
     }
+    else if(event === 'VOICE_STATE_CREATE') {
+      this.setState({voiceUsers: this.addUserVoiceState(data.data.user)});
+    }
+    else if(event === 'VOICE_STATE_DELETE') {
+      let user = data.data.user;
+      let voiceUsers = this.state.voiceUsers;
+      delete voiceUsers[user.id];
+      this.setState({voiceUsers});
+    }
+    else if(event === 'SPEAKING_START') {
+      let userId = data.data['user_id'];
+      let voiceUsers = this.state.voiceUsers;
+      if (!voiceUsers[userId]) {
+        return;
+      }
+      voiceUsers[userId].speaking = true;
+      this.setState({voiceUsers});
+    }
+    else if(event === 'SPEAKING_STOP') {
+      let userId = data.data['user_id'];
+      let voiceUsers = this.state.voiceUsers;
+      if (!voiceUsers[userId]) {
+        return;
+      }
+      voiceUsers[userId].speaking = false;
+      this.setState({voiceUsers});
+    }
+  }
+
+  addUserVoiceState(user) {
+    if (user.bot) {
+      return this.state.voiceUsers;
+    }
+    let voiceUsers = {...this.state.voiceUsers};
+    voiceUsers[user.id] = {
+      username: user.username,
+      speaking: false
+    };
+    return voiceUsers;
   }
 
   // ----------------------------------------------------------------------------------------
@@ -203,6 +243,20 @@ class App extends Component {
     );
   }
 
+  observeVoiceChannel(voiceChannel) {
+    this.call('GET_CHANNEL', {'channel_id': voiceChannel.id}, (response) => {
+      let voiceUsers = {...this.state.voiceUsers};
+      response.data['voice_states'].forEach((voiceState) => {
+        voiceUsers = this.addUserVoiceState(voiceState.user);
+      });
+      this.setState({voiceUsers});
+      this.subscribe('VOICE_STATE_CREATE', {'channel_id': voiceChannel.id});
+      this.subscribe('VOICE_STATE_DELETE', {'channel_id': voiceChannel.id});
+      this.subscribe('SPEAKING_START', {'channel_id': voiceChannel.id});
+      this.subscribe('SPEAKING_STOP', {'channel_id': voiceChannel.id});
+    });
+  }
+
   joinMatch() {
     request
       .post(`${ENDPOINT}/join_match/${this.state.gameId}`)
@@ -225,8 +279,13 @@ class App extends Component {
               if (this.isError(response, ERROR_ALREADY_IN_VOICE_CHANNEL)) {
                 const leave = window.confirm('Leave your current voice channel to join match chat?');
                 if (leave) {
-                  this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id, force: true});
+                  this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id, force: true}, () => {
+                    this.observeVoiceChannel(first_voice_channel);
+                  });
                 }
+              }
+              else {
+                this.observeVoiceChannel(first_voice_channel);
               }
             });
 
@@ -250,7 +309,7 @@ class App extends Component {
 
   disconnect() {
     if (this.socket) {
-      this.setState({lines: []});
+      this.setState({lines: [], voiceUsers: {}});
       this.socket.close();
       this.socket = null;
     }
@@ -282,6 +341,11 @@ class App extends Component {
       return <div key={message.id} className="line">{message.author.username}: {message.content}</div>
     });
 
+    const voiceUsers = Object.keys(this.state.voiceUsers).map((id) => {
+      const user = this.state.voiceUsers[id];
+      return <div key={id} className="user">{user.username}: {user.speaking ? 'Speaking' : 'Not Speaking'}</div>
+    });
+
     return (
       <div className="App">
         <div className="status">{this.state.message}</div>
@@ -290,6 +354,11 @@ class App extends Component {
         <div className={classnames('button', {disabled: !gameId || guildId})} onClick={this.joinMatch.bind(this)}>Join Match</div>
         <div className={classnames('button', {disabled: !gameId || !guildId})} onClick={this.endMatch.bind(this)}>End Match</div>
         <div className={classnames('button', {disabled: !connected})} onClick={this.disconnect.bind(this)}>Disconnect</div>
+        <div className="voiparea">
+          <div className="users">
+            {voiceUsers}
+          </div>
+        </div>
         <div className="chatarea">
           <div className="lines">
             {lines}
