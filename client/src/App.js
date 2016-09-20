@@ -13,7 +13,9 @@ const NUM_PORTS_TO_SEARCH = 10;
 const ENCODING = 'json';
 const MY_USER_NAME = 'Jason';
 const ENDPOINT = 'http://localhost:5000';
-
+const DEFAULT_REQUEST_TIMEOUT = 60; // seconds
+const CHANNEL_TYPE_VOICE = 2;
+const ERROR_ALREADY_IN_VOICE_CHANNEL = 5003;
 
 class App extends Component {
   constructor(props) {
@@ -59,10 +61,16 @@ class App extends Component {
     });
   }
 
+  isError(response, code=undefined) {
+    return response.evt === 'ERROR' && (code ? response.data.code === code : true);
+  }
+
   // ----------------------------------------------------------------------------------------
   // Response handlers
   // ----------------------------------------------------------------------------------------
   handleError(err) {
+    // note: You should implement real error handling that, when appropriate, retries with a backoff :-)
+
     console.log(err);
     this.setState({message: err.toString()});
   }
@@ -200,23 +208,36 @@ class App extends Component {
       .post(`${ENDPOINT}/join_match/${this.state.gameId}`)
       .send({id: MY_USER_NAME, discord_id: this.state.discordUserId})
       .then(({text}) => {
-        // citron note: We are attempting to wait for the new match server to be loaded by the Discord
-        // client before requesting channels from it. Ideally, Discord would just hold this request until
-        // the server arrives & then return.
-        window.setTimeout(() => {
-          const guildId = JSON.parse(text).guild_id;
-          this.setState({guildId});
-          this.call('GET_GUILD', {guild_id: guildId}, () => {
-            this.call('GET_CHANNELS', {guild_id: guildId}, (response) => {
-              const first_voice_channel = response.data.channels[1];
-              this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id});
-              this.call('SELECT_TEXT_CHANNEL', {'channel_id': guildId});
-              this.subscribe('MESSAGE_CREATE', {'channel_id': guildId});
-              this.subscribe('MESSAGE_UPDATE', {'channel_id': guildId});
-              this.subscribe('MESSAGE_DELETE', {'channel_id': guildId});
+        const guildId = JSON.parse(text).guild_id;
+        this.setState({guildId});
+        this.call('GET_GUILD', {guild_id: guildId, timeout: DEFAULT_REQUEST_TIMEOUT}, (response) => {
+          if (this.isError(response)) {
+            const message = 'Failed to load the GUILD. Trying again';
+            console.error(message);
+            this.setState({message});
+            this.joinMatch();
+            return;
+          }
+
+          this.call('GET_CHANNELS', {guild_id: guildId}, (response) => {
+            const first_voice_channel = response.data.channels.find((channel) => channel.type === CHANNEL_TYPE_VOICE);
+            this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id}, (response) => {
+              if (this.isError(response, ERROR_ALREADY_IN_VOICE_CHANNEL)) {
+                const leave = window.confirm('Leave your current voice channel to join match chat?');
+                if (leave) {
+                  this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id, force: true});
+                }
+              }
             });
+
+            // this focuses the guild's default text channel on the client
+            this.call('SELECT_TEXT_CHANNEL', {'channel_id': guildId});
+
+            this.subscribe('MESSAGE_CREATE', {'channel_id': guildId});
+            this.subscribe('MESSAGE_UPDATE', {'channel_id': guildId});
+            this.subscribe('MESSAGE_DELETE', {'channel_id': guildId});
           });
-        }, 500);
+        });
       },
       this.handleError.bind(this)
     );
