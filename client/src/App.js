@@ -14,7 +14,6 @@ const ENCODING = 'json';
 const MY_USER_NAME = 'Jason';
 const ENDPOINT = 'http://localhost:5000';
 const DEFAULT_REQUEST_TIMEOUT = 60; // seconds
-const CHANNEL_TYPE_VOICE = 2;
 const ERROR_ALREADY_IN_VOICE_CHANNEL = 5003;
 
 class App extends Component {
@@ -26,10 +25,11 @@ class App extends Component {
       discordUserId: null,
       loggedIn: false,
       connected: false,
-      guildId: null,
+      channelId: null,
       lines: [],
       accessToken: null,
-      voiceUsers: {}
+      voiceUsers: {},
+      ioPort: 0
     };
   }
 
@@ -119,7 +119,7 @@ class App extends Component {
               .then((res) => {
                 this.call('AUTHORIZE', {
                   'client_id': CLIENT_ID,
-                  'scopes': ['rpc.api', 'identify', 'rpc', 'guilds.join'],
+                  'scopes': ['rpc.api', 'rpc', 'gdm.join'],
                   rpc_token: JSON.parse(res.text).rpc_token
                 },
                 (response) => {
@@ -140,6 +140,10 @@ class App extends Component {
     }
     else if(event === 'MESSAGE_CREATE') {
       let lines = this.state.lines.slice();
+      // type > 0 means it's a bot or system message.
+      if (data.data.message.type > 0) {
+        return;
+      }
       lines.push(data.data.message);
       this.setState({lines});
     }
@@ -215,12 +219,12 @@ class App extends Component {
     };
 
     this.socket.onopen = (e) => {
-      this.setState({'message': `Opened ${e}`, connected: true, lines: []});
+      this.setState({'message': `Opened ${e}`, connected: true, lines: [], ioPort: portAttempt});
     };
 
     this.socket.onclose = (e) => {
       const wasConnected = this.state.connected;
-      this.setState({'message': `Closed ${e}`, loggedIn: false, connected: false, guildId: null});
+      this.setState({'message': `Closed ${e}`, loggedIn: false, connected: false, channelId: null});
 
       if (wasConnected === false) {
         if (portOffset < NUM_PORTS_TO_SEARCH) {
@@ -243,59 +247,51 @@ class App extends Component {
     );
   }
 
-  observeVoiceChannel(voiceChannel) {
-    this.call('GET_CHANNEL', {'channel_id': voiceChannel.id}, (response) => {
+  observeVoiceChannel(voiceChannelId) {
+    this.call('GET_CHANNEL', {'channel_id': voiceChannelId}, (response) => {
+      if (this.isError(response)) {
+        console.error(response.message);
+        return;
+      }
+
       let voiceUsers = {...this.state.voiceUsers};
       response.data['voice_states'].forEach((voiceState) => {
         voiceUsers = this.addUserVoiceState(voiceState.user);
       });
       this.setState({voiceUsers});
-      this.subscribe('VOICE_STATE_CREATE', {'channel_id': voiceChannel.id});
-      this.subscribe('VOICE_STATE_DELETE', {'channel_id': voiceChannel.id});
-      this.subscribe('SPEAKING_START', {'channel_id': voiceChannel.id});
-      this.subscribe('SPEAKING_STOP', {'channel_id': voiceChannel.id});
+      this.subscribe('VOICE_STATE_CREATE', {'channel_id': voiceChannelId});
+      this.subscribe('VOICE_STATE_DELETE', {'channel_id': voiceChannelId});
+      this.subscribe('SPEAKING_START', {'channel_id': voiceChannelId});
+      this.subscribe('SPEAKING_STOP', {'channel_id': voiceChannelId});
     });
   }
 
-  joinMatch() {
+ joinMatch() {
     request
       .post(`${ENDPOINT}/join_match/${this.state.gameId}`)
       .send({id: MY_USER_NAME, discord_id: this.state.discordUserId})
       .then(({text}) => {
-        const guildId = JSON.parse(text).guild_id;
-        this.setState({guildId});
-        this.call('GET_GUILD', {guild_id: guildId, timeout: DEFAULT_REQUEST_TIMEOUT}, (response) => {
-          if (this.isError(response)) {
-            const message = 'Failed to load the GUILD. Trying again';
-            console.error(message);
-            this.setState({message});
-            this.joinMatch();
-            return;
+        const channelId = JSON.parse(text).channel_id;
+        this.setState({channelId});
+        this.call('SELECT_VOICE_CHANNEL', {'channel_id': channelId, timeout: DEFAULT_REQUEST_TIMEOUT}, (response) => {
+          // this focuses the guild's default text channel on the client
+          this.call('SELECT_TEXT_CHANNEL', {'channel_id': channelId});
+
+          this.subscribe('MESSAGE_CREATE', {'channel_id': channelId});
+          this.subscribe('MESSAGE_UPDATE', {'channel_id': channelId});
+          this.subscribe('MESSAGE_DELETE', {'channel_id': channelId});
+
+          if (this.isError(response, ERROR_ALREADY_IN_VOICE_CHANNEL)) {
+            const leave = window.confirm('Leave your current voice channel to join match chat?');
+            if (leave) {
+              this.call('SELECT_VOICE_CHANNEL', {'channel_id': channelId, force: true}, () => {
+                this.observeVoiceChannel(channelId);
+              });
+            }
           }
-
-          this.call('GET_CHANNELS', {guild_id: guildId}, (response) => {
-            const first_voice_channel = response.data.channels.find((channel) => channel.type === CHANNEL_TYPE_VOICE);
-            this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id}, (response) => {
-              if (this.isError(response, ERROR_ALREADY_IN_VOICE_CHANNEL)) {
-                const leave = window.confirm('Leave your current voice channel to join match chat?');
-                if (leave) {
-                  this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id, force: true}, () => {
-                    this.observeVoiceChannel(first_voice_channel);
-                  });
-                }
-              }
-              else {
-                this.observeVoiceChannel(first_voice_channel);
-              }
-            });
-
-            // this focuses the guild's default text channel on the client
-            this.call('SELECT_TEXT_CHANNEL', {'channel_id': guildId});
-
-            this.subscribe('MESSAGE_CREATE', {'channel_id': guildId});
-            this.subscribe('MESSAGE_UPDATE', {'channel_id': guildId});
-            this.subscribe('MESSAGE_DELETE', {'channel_id': guildId});
-          });
+          else {
+            this.observeVoiceChannel(channelId);
+          }
         });
       },
       this.handleError.bind(this)
@@ -303,13 +299,13 @@ class App extends Component {
   }
 
   endMatch() {
-    this.setState({gameId: null, guildId: null});
+    this.setState({gameId: null, channelId: null});
     request.post(`${ENDPOINT}/end_match`).end();
   }
 
   disconnect() {
     if (this.socket) {
-      this.setState({lines: [], voiceUsers: {}});
+      this.setState({lines: [], voiceUsers: {}, gameId: null, channelId: null});
       this.socket.close();
       this.socket = null;
     }
@@ -320,7 +316,7 @@ class App extends Component {
       let inputBox = this.refs['INPUT_BOX'];
 
       request
-        .post(`https://discordapp.io:${PORT}/channels/${this.state.guildId}/messages`)
+        .post(`https://discordapp.io:${this.state.ioPort}/channels/${this.state.channelId}/messages`)
         .send({content: inputBox.value})
         .set('Authorization', `Bearer ${this.state.accessToken}`)
         .end((err, res) => {
@@ -335,7 +331,7 @@ class App extends Component {
   // Make It Pretty
   // ----------------------------------------------------------------------------------------
   render() {
-    const {guildId, gameId, loggedIn, connected} = this.state;
+    const {channelId, gameId, loggedIn, connected} = this.state;
 
     const lines = this.state.lines.map((message) => {
       return <div key={message.id} className="line">{message.author.username}: {message.content}</div>
@@ -351,8 +347,8 @@ class App extends Component {
         <div className="status">{this.state.message}</div>
         <div className={classnames('button', {disabled: connected})} onClick={this.connect.bind(this)}>Connect to Discord</div>
         <div className={classnames('button', {disabled: !connected || !loggedIn || gameId})} onClick={this.createMatch.bind(this)}>Create Match</div>
-        <div className={classnames('button', {disabled: !gameId || guildId})} onClick={this.joinMatch.bind(this)}>Join Match</div>
-        <div className={classnames('button', {disabled: !gameId || !guildId})} onClick={this.endMatch.bind(this)}>End Match</div>
+        <div className={classnames('button', {disabled: !gameId || channelId})} onClick={this.joinMatch.bind(this)}>Join Match</div>
+        <div className={classnames('button', {disabled: !gameId || !channelId})} onClick={this.endMatch.bind(this)}>End Match</div>
         <div className={classnames('button', {disabled: !connected})} onClick={this.disconnect.bind(this)}>Disconnect</div>
         <div className="voiparea">
           <div className="users">
