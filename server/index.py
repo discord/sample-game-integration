@@ -9,17 +9,19 @@ import ConfigParser
 app = Flask(__name__)
 CORS(app)  # don't do this in production
 
-BASE_URL = 'https://discordapp.com/api'
+BASE_URL = 'http://localhost:3000'
 
 config = ConfigParser.RawConfigParser()
 config.read('discord.cfg')
 
+APP_NAME = 'Sample-Game-Client'
+REDIRECT_URI = 'http://localhost:3006'
 BOT_TOKEN = config.get('DiscordOptions', 'bot_token')
 CLIENT_SECRET = config.get('DiscordOptions', 'client_secret')
 CLIENT_ID = config.get('DiscordOptions', 'client_id')
 HEADERS = {
     'Authorization': 'Bot {0}'.format(BOT_TOKEN),
-    'User-Agent': 'DiscordBot (Sample-Game-Client, 0.1)'
+    'User-Agent': 'DiscordBot ({0}, 0.1)'.format(APP_NAME)
 }
 
 
@@ -29,11 +31,24 @@ HEADERS = {
 class User:
     def __init__(self):
         self.id = None
+        self.discord_id = None
         self.refresh_token = None
         self.access_token = None
         self.expires_at = None
         self.scope = None
 
+    def serialize(self):
+        return {
+            'id': self.id,
+            'access_token': self.access_token,
+            'discord_id': self.discord_id
+        }
+
+    def request_headers(self):
+        return {
+            'Authorization': 'Bearer {0}'.format(self.access_token),
+            'User-Agent': 'DiscordBot ({0}, 0.1)'.format(APP_NAME)
+        }
 
 class Game:
     def __init__(self):
@@ -125,8 +140,16 @@ def login():
     if user.expires_at < time():
         user = refresh_access_token(user)
 
+    return json.dumps(user.serialize())
+
+
+@app.route('/find_match', methods=['POST'])
+def find_match():
+    if len(data['games']) <= 0:
+        abort(400, 'Invalid game_id')
+    game = data['games'][0]
     return json.dumps({
-        'access_token': user.access_token
+        'game_id': game.id
     })
 
 
@@ -146,7 +169,6 @@ def create_match():
 @app.route('/join_match/<game_id>', methods=['POST'])
 def join_match(game_id):
     user = data['users'][request.get_json()['id']]
-    discord_id = request.get_json()['discord_id']
 
     game = next((g for g in data['games'] if g.id == game_id), None)
     if game is None:
@@ -241,9 +263,12 @@ def discord_exchange_token():
     user.refresh_token = r.json()['refresh_token']
     user.expires_at = int(r.json()['expires_in']) + time()
     user.scope = r.json()['scope']
+
+    r = requests.get(BASE_URL + '/users/@me', headers=user.request_headers())
+    r.raise_for_status()
+    user.discord_id = r.json()['id']
+
     data['users'][user.id] = user
     save()
 
-    return json.dumps({
-        'access_token': user.access_token
-    })
+    return json.dumps(user.serialize())

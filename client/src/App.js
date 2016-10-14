@@ -6,12 +6,29 @@ const nonce = require('nonce')();
 
 const config = require('json!./../config.json');
 
+let username = 'Jason';
+let startOffset = 0;
+
+// For example you can use for testing two users:
+// http://localhost:3006/illumina/0
+// http://localhost:3006/moonshed/1
+if (window.location.pathname !== '/') {
+  const params = window.location.pathname.split('/');
+  if (params.length > 1) {
+    username = params[1];
+  }
+
+  if (params.length > 2) {
+    startOffset = parseInt(params[2]);
+  }
+}
+
 const VERSION = '1';
 const CLIENT_ID = config.clientId;
-const PORT = 6463;
-const NUM_PORTS_TO_SEARCH = 10;
+const PORT = 6463 + startOffset;
+const NUM_PORTS_TO_SEARCH = 10 - startOffset;
 const ENCODING = 'json';
-const MY_USER_NAME = 'Jason';
+const MY_USER_NAME = username;
 const ENDPOINT = 'http://localhost:5000';
 const DEFAULT_REQUEST_TIMEOUT = 60; // seconds
 const CHANNEL_TYPE_VOICE = 2;
@@ -23,7 +40,6 @@ class App extends Component {
     this.handlers = {};
     this.state = {
       message: 'Hello',
-      discordUserId: null,
       loggedIn: false,
       connected: false,
       guildId: null,
@@ -76,11 +92,13 @@ class App extends Component {
     this.setState({message: err.toString()});
   }
 
-  handleGotAccessToken(accessToken) {
-    this.setState({accessToken});
+  handleGotAccessToken(user) {
+    const accessToken = user['access_token'];
+    const discordId = user['discord_id'];
+    this.setState({accessToken, discordId});
     this.call('AUTHENTICATE', {access_token: accessToken}, (response) => {
+      console.log(response.data);
       this.setState({
-        discordUserId: response.data.user.id,
         message: response.data.user.username,
         loggedIn: true
       });
@@ -111,7 +129,7 @@ class App extends Component {
         .send({id: MY_USER_NAME})
         .then(
           ({text}) => {
-            this.handleGotAccessToken(JSON.parse(text).access_token);
+            this.handleGotAccessToken(JSON.parse(text));
           },
           () => {
             request
@@ -119,7 +137,7 @@ class App extends Component {
               .then((res) => {
                 this.call('AUTHORIZE', {
                   'client_id': CLIENT_ID,
-                  'scopes': ['rpc.api', 'identify', 'rpc', 'guilds.join'],
+                  'scopes': ['rpc.api', 'rpc', 'identify', 'gdm.join'],
                   rpc_token: JSON.parse(res.text).rpc_token
                 },
                 (response) => {
@@ -127,7 +145,7 @@ class App extends Component {
                     .post(`${ENDPOINT}/discord_exchange_code`)
                     .send({code: response.data.code, id: MY_USER_NAME})
                     .then(({text}) => {
-                      this.handleGotAccessToken(JSON.parse(text).access_token)
+                      this.handleGotAccessToken(JSON.parse(text))
                     },
                     this.handleError.bind(this)
                   );
@@ -245,6 +263,7 @@ class App extends Component {
 
   observeVoiceChannel(voiceChannel) {
     this.call('GET_CHANNEL', {'channel_id': voiceChannel.id}, (response) => {
+
       let voiceUsers = {...this.state.voiceUsers};
       response.data['voice_states'].forEach((voiceState) => {
         voiceUsers = this.addUserVoiceState(voiceState.user);
@@ -260,7 +279,7 @@ class App extends Component {
   joinMatch() {
     request
       .post(`${ENDPOINT}/join_match/${this.state.gameId}`)
-      .send({id: MY_USER_NAME, discord_id: this.state.discordUserId})
+      .send({id: MY_USER_NAME})
       .then(({text}) => {
         const guildId = JSON.parse(text).guild_id;
         this.setState({guildId});
