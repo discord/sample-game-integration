@@ -19,7 +19,7 @@ if (window.location.pathname !== '/') {
   }
 
   if (params.length > 2) {
-    startOffset = parseInt(params[2]);
+    startOffset = parseInt(params[2], 10);
   }
 }
 
@@ -33,6 +33,7 @@ const ENDPOINT = 'http://localhost:5000';
 const DEFAULT_REQUEST_TIMEOUT = 60; // seconds
 const CHANNEL_TYPE_VOICE = 2;
 const ERROR_ALREADY_IN_VOICE_CHANNEL = 5003;
+const ERROR_TOKEN_DOESNT_MATCH_CURRENT_USER = 4009;
 
 class App extends Component {
   constructor(props) {
@@ -97,7 +98,12 @@ class App extends Component {
     const discordId = user['discord_id'];
     this.setState({accessToken, discordId});
     this.call('AUTHENTICATE', {access_token: accessToken}, (response) => {
-      console.log(response.data);
+      if (response.data.code === ERROR_TOKEN_DOESNT_MATCH_CURRENT_USER) {
+        console.error(response.data);
+        this.disconnect();
+        return;
+      }
+
       this.setState({
         message: response.data.user.username,
         loggedIn: true
