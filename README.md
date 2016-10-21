@@ -27,11 +27,6 @@ you're adapting this into your project:
  or game client could fail and you should retry.
 4. All HTTP requests via the Discord RPC.Proxy (discordapp.io) could
  fail and you should retry a few times.
-5. Your game server should hold the user's `Refresh Token` and `Expiry`, 
- in addition to the `Access Token` used in this sample. If the user 
- attempts to do something and the `Expiry` timestamp has passed - you 
- should request a new access token using the refresh token as described 
- here https://discordapp.com/developers/docs/topics/oauth2#implementing-oauth2.
 
 # Sample Walkthrough
 To implement match/instance based voice & text chat the basic workflow is as follows:
@@ -60,17 +55,18 @@ To implement match/instance based voice & text chat the basic workflow is as fol
  socket as shown in `client/src/App.js`. If you get a success response then you're ready to go.
 - At this point your game will be connected to the local user's Discord Client via the RPC 
  system and ready to do work.
-- When a user joins a match, on your server, you should create a Discord Guild
+- When a user joins a match, on your server, you should create a Discord Channel
  and put the user in it. Remember: be sure to do this lazily when a game user
- connects to a match and has Discord. Don't create a guild along with your match.
- This will cause lots of empty Discord guilds to be sitting around! Check out
- `/join_match` in `server/index.py` to see an example of lazy creating a guild and 
- placing the user into it. 
-- Send the new Discord guild id back to the client. This guild will be the container
- for your match's voice & text chat functionality & used in many of the RPC calls.
-- On the client, now you can assume the Server is in the user's list and ready to go. Begin by
- making RPC calls to implement whatever features you want. In this sample we are joining a voice channel and
- connecting to text chat. You can see how this is done in the `joinMatch()` function in `client/src/App.js`.
+ connects to a match and has Discord. Don't create a group along with your match.
+ This will cause lots of empty Discord channels to be sitting around! Check out
+ `/join_match` in `server/index.py` to see an example of lazy creating a channels and 
+ placing the user into it.
+- Send the new Discord channel id back to the client. This guild will be the container
+ for your match's voice & text chat functionality and used in many of the RPC calls.
+- On the client, now you can assume the channel is in the user's Direct Messages list 
+  and ready to go. Begin by making RPC calls to implement whatever features you want. In this 
+  sample we are joining the voice channel and connecting to text chat. You can see how this is 
+  done in the `joinMatch()` function in `client/src/App.js`.
 - One thing to note is when you subscribe to an event over the RPC you'll get 
  messages sent to you as things happen in real time. Check out the `handleDiscordRPCResponse()` function
  in `client/src/App.js` to see an example of how to handle some of these events.
@@ -90,7 +86,7 @@ First up you'll need to create an application on Discord's platform. To
 do that head to https://discordapp.com/developers/applications/me and click
 the giant plus button.
 
-To configure your application to manage voice servers properly do this stuff:
+To configure your application to manage channels properly do this stuff:
 
 - Set a fun name like _Legend of the Apple Tree: Summary of Clouds_.
 - You can set an app icon later. Eventually this will show up as the 
