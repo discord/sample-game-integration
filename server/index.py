@@ -50,6 +50,7 @@ class User:
             'User-Agent': 'DiscordBot ({0}, 0.1)'.format(APP_NAME)
         }
 
+
 class Game:
     def __init__(self):
         self.id = 0

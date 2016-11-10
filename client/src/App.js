@@ -1,8 +1,11 @@
 import React, {Component} from 'react';
 import request from 'superagent';
-import './App.css';
 import classnames from 'classnames';
+import Select from 'react-select';
 const nonce = require('nonce')();
+
+import './App.css';
+import 'react-select/dist/react-select.css';
 
 const config = require('json!./../config.json');
 
@@ -31,9 +34,9 @@ const ENCODING = 'json';
 const MY_USER_NAME = username;
 const ENDPOINT = 'http://localhost:5000';
 const DEFAULT_REQUEST_TIMEOUT = 60; // seconds
-const CHANNEL_TYPE_VOICE = 2;
 const ERROR_ALREADY_IN_VOICE_CHANNEL = 5003;
 const ERROR_TOKEN_DOESNT_MATCH_CURRENT_USER = 4009;
+const CHANNEL_TYPE_TEXT = 0;
 
 class App extends Component {
   constructor(props) {
@@ -43,10 +46,14 @@ class App extends Component {
       message: 'Hello',
       loggedIn: false,
       connected: false,
-      guildId: null,
+      channelId: null,
       lines: [],
       accessToken: null,
-      voiceUsers: {}
+      voiceUsers: {},
+      ioPort: 0,
+      shareGuilds: null,
+      shareChannels: null,
+      shareChannelId: null
     };
   }
 
@@ -83,6 +90,16 @@ class App extends Component {
     return response.evt === 'ERROR' && (code ? response.data.code === code : true);
   }
 
+  discordRequest(route, body) {
+    request
+      .post(`https://discordapp.io:${this.state.ioPort}/${route}`)
+      .send(body)
+      .set('Authorization', `Bearer ${this.state.accessToken}`)
+      .end((err, res) => {
+        console.log('sent', err, res);
+      });
+  }
+
   // ----------------------------------------------------------------------------------------
   // Response handlers
   // ----------------------------------------------------------------------------------------
@@ -108,6 +125,21 @@ class App extends Component {
         message: response.data.user.username,
         loggedIn: true
       });
+
+      this.loadGuildsForSharing();
+    });
+  }
+
+  loadGuildsForSharing() {
+    this.call('GET_GUILDS', {}, (response) => {
+      const shareGuilds = response.data.guilds.map((guild) => {
+        return {value: guild.id, label: guild.name, icon: guild.icon_url}
+      });
+
+      this.setState({shareGuilds});
+      if (shareGuilds.length === 1) {
+        this.handleSelectedShareGuild(shareGuilds[0]);
+      }
     });
   }
 
@@ -164,6 +196,10 @@ class App extends Component {
     }
     else if(event === 'MESSAGE_CREATE') {
       let lines = this.state.lines.slice();
+      // type > 0 means it's a bot or system message.
+      if (data.data.message.type > 0) {
+        return;
+      }
       lines.push(data.data.message);
       this.setState({lines});
     }
@@ -239,12 +275,12 @@ class App extends Component {
     };
 
     this.socket.onopen = (e) => {
-      this.setState({'message': `Opened ${e}`, connected: true, lines: []});
+      this.setState({'message': `Opened ${e}`, connected: true, lines: [], ioPort: portAttempt});
     };
 
     this.socket.onclose = (e) => {
       const wasConnected = this.state.connected;
-      this.setState({'message': `Closed ${e}`, loggedIn: false, connected: false, guildId: null});
+      this.setState({'message': `Closed ${e}`, loggedIn: false, connected: false, channelId: null});
 
       if (wasConnected === false) {
         if (portOffset < NUM_PORTS_TO_SEARCH) {
@@ -267,60 +303,61 @@ class App extends Component {
     );
   }
 
-  observeVoiceChannel(voiceChannel) {
-    this.call('GET_CHANNEL', {'channel_id': voiceChannel.id}, (response) => {
+  findMatch() {
+    request
+      .post(`${ENDPOINT}/find_match`)
+      .then(({text}) => {
+        this.setState({gameId: JSON.parse(text).game_id});
+      },
+      this.handleError.bind(this)
+    );
+  }
+
+  observeVoiceChannel(voiceChannelId) {
+    this.call('GET_CHANNEL', {'channel_id': voiceChannelId}, (response) => {
+      if (this.isError(response)) {
+        console.error(response.message);
+        return;
+      }
 
       let voiceUsers = {...this.state.voiceUsers};
       response.data['voice_states'].forEach((voiceState) => {
         voiceUsers = this.addUserVoiceState(voiceState.user);
       });
       this.setState({voiceUsers});
-      this.subscribe('VOICE_STATE_CREATE', {'channel_id': voiceChannel.id});
-      this.subscribe('VOICE_STATE_DELETE', {'channel_id': voiceChannel.id});
-      this.subscribe('SPEAKING_START', {'channel_id': voiceChannel.id});
-      this.subscribe('SPEAKING_STOP', {'channel_id': voiceChannel.id});
+      this.subscribe('VOICE_STATE_CREATE', {'channel_id': voiceChannelId});
+      this.subscribe('VOICE_STATE_DELETE', {'channel_id': voiceChannelId});
+      this.subscribe('SPEAKING_START', {'channel_id': voiceChannelId});
+      this.subscribe('SPEAKING_STOP', {'channel_id': voiceChannelId});
     });
   }
 
-  joinMatch() {
+ joinMatch() {
     request
       .post(`${ENDPOINT}/join_match/${this.state.gameId}`)
       .send({id: MY_USER_NAME})
       .then(({text}) => {
-        const guildId = JSON.parse(text).guild_id;
-        this.setState({guildId});
-        this.call('GET_GUILD', {guild_id: guildId, timeout: DEFAULT_REQUEST_TIMEOUT}, (response) => {
-          if (this.isError(response)) {
-            const message = 'Failed to load the GUILD. Trying again';
-            console.error(message);
-            this.setState({message});
-            this.joinMatch();
-            return;
+        const channelId = JSON.parse(text).channel_id;
+        this.setState({channelId});
+        this.call('SELECT_VOICE_CHANNEL', {'channel_id': channelId, timeout: DEFAULT_REQUEST_TIMEOUT}, (response) => {
+          // this focuses the guild's default text channel on the client
+          this.call('SELECT_TEXT_CHANNEL', {'channel_id': channelId});
+
+          this.subscribe('MESSAGE_CREATE', {'channel_id': channelId});
+          this.subscribe('MESSAGE_UPDATE', {'channel_id': channelId});
+          this.subscribe('MESSAGE_DELETE', {'channel_id': channelId});
+
+          if (this.isError(response, ERROR_ALREADY_IN_VOICE_CHANNEL)) {
+            const leave = window.confirm('Leave your current voice channel to join match chat?');
+            if (leave) {
+              this.call('SELECT_VOICE_CHANNEL', {'channel_id': channelId, force: true}, () => {
+                this.observeVoiceChannel(channelId);
+              });
+            }
           }
-
-          this.call('GET_CHANNELS', {guild_id: guildId}, (response) => {
-            const first_voice_channel = response.data.channels.find((channel) => channel.type === CHANNEL_TYPE_VOICE);
-            this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id}, (response) => {
-              if (this.isError(response, ERROR_ALREADY_IN_VOICE_CHANNEL)) {
-                const leave = window.confirm('Leave your current voice channel to join match chat?');
-                if (leave) {
-                  this.call('SELECT_VOICE_CHANNEL', {'channel_id': first_voice_channel.id, force: true}, () => {
-                    this.observeVoiceChannel(first_voice_channel);
-                  });
-                }
-              }
-              else {
-                this.observeVoiceChannel(first_voice_channel);
-              }
-            });
-
-            // this focuses the guild's default text channel on the client
-            this.call('SELECT_TEXT_CHANNEL', {'channel_id': guildId});
-
-            this.subscribe('MESSAGE_CREATE', {'channel_id': guildId});
-            this.subscribe('MESSAGE_UPDATE', {'channel_id': guildId});
-            this.subscribe('MESSAGE_DELETE', {'channel_id': guildId});
-          });
+          else {
+            this.observeVoiceChannel(channelId);
+          }
         });
       },
       this.handleError.bind(this)
@@ -328,39 +365,99 @@ class App extends Component {
   }
 
   endMatch() {
-    this.setState({gameId: null, guildId: null});
+    this.setState({gameId: null, channelId: null});
     request.post(`${ENDPOINT}/end_match`).end();
+  }
+
+  shareResults() {
+    const embed = {
+      title: `Defeat on Summoner's Rift`,
+      description: 'Match results for a Diamond tier ranked game.',
+      url: 'http://matchhistory.na.leagueoflegends.com/en/#match-details/NA1/2338193457/50068799?tab=overview',
+      color: 0xFF0000,
+      fields: [
+        {
+          name: 'Champion',
+          value: 'Lucian',
+          inline: true
+        },
+        {
+          name: 'K/D/A',
+          value: '24/18/12',
+          inline: true
+        }
+      ],
+      image: {
+        url: 'https://lolstatic-a.akamaihd.net/game-info/1.1.9/images/content/gi-modes-sr-the-battle-for-the-rift.jpg'
+      },
+      footer: {
+        text: `League of Legends`,
+        icon_url: 'https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcS4Em5ICgyo-AdBKqA74vPAvoDihdnustbwuA23THD9pR8oI5Q0Z1swvw'
+      }
+    };
+
+    this.discordRequest(`channels/${this.state.shareChannelId}/messages`, {embed});
   }
 
   disconnect() {
     if (this.socket) {
-      this.setState({lines: [], voiceUsers: {}});
+      this.setState({
+        lines: [], voiceUsers: {}, gameId: null, channelId: null,
+        shareGuilds: null, shareChannels: null, shareGuildId: null, shareChannelId: null
+      });
       this.socket.close();
       this.socket = null;
     }
   }
 
+  // ----------------------------------------------------------------------------------------
+  // UI Event Handlers
+  // ----------------------------------------------------------------------------------------
   onKeyUp(e) {
     if (e.keyCode === 13 /* enter */) {
       let inputBox = this.refs['INPUT_BOX'];
-
-      request
-        .post(`https://discordapp.io:${PORT}/channels/${this.state.guildId}/messages`)
-        .send({content: inputBox.value})
-        .set('Authorization', `Bearer ${this.state.accessToken}`)
-        .end((err, res) => {
-          console.log('sent', err, res);
-        });
-
+      this.discordRequest(`channels/${this.state.channelId}/messages`, {content: inputBox.value});
       inputBox.value = '';
     }
+  }
+
+  handleSelectedShareGuild(val) {
+    const shareGuildId = val.value;
+    this.setState({shareGuildId, shareChannels: null, shareChannelId: null});
+
+    this.call('GET_CHANNELS', {guild_id: shareGuildId}, (response) => {
+      const shareChannels = response.data.channels
+        .filter((channel) => channel.type === CHANNEL_TYPE_TEXT)
+        .map((channel) => {
+          return {value: channel.id, label: channel.name}
+        }
+      );
+
+      this.setState({shareChannels});
+
+      if (shareChannels.length === 1) {
+        this.handleSelectedShareChannel(shareChannels[0]);
+      }
+    });
+  }
+
+  handleSelectedShareChannel(val) {
+    this.setState({shareChannelId: val.value});
   }
 
   // ----------------------------------------------------------------------------------------
   // Make It Pretty
   // ----------------------------------------------------------------------------------------
+  renderOption(option) {
+    if (option.icon) {
+      return <div className="guild"><img className="guild-icon" alt="" src={option.icon} />{option.label}</div>;
+    }
+
+    return <div className="guild">{option.label}</div>;
+  }
+
   render() {
-    const {guildId, gameId, loggedIn, connected} = this.state;
+    const {channelId, gameId, loggedIn, connected} = this.state;
 
     const lines = this.state.lines.map((message) => {
       return <div key={message.id} className="line">{message.author.username}: {message.content}</div>
@@ -375,10 +472,30 @@ class App extends Component {
       <div className="App">
         <div className="status">{this.state.message}</div>
         <div className={classnames('button', {disabled: connected})} onClick={this.connect.bind(this)}>Connect to Discord</div>
-        <div className={classnames('button', {disabled: !connected || !loggedIn || gameId})} onClick={this.createMatch.bind(this)}>Create Match</div>
-        <div className={classnames('button', {disabled: !gameId || guildId})} onClick={this.joinMatch.bind(this)}>Join Match</div>
-        <div className={classnames('button', {disabled: !gameId || !guildId})} onClick={this.endMatch.bind(this)}>End Match</div>
         <div className={classnames('button', {disabled: !connected})} onClick={this.disconnect.bind(this)}>Disconnect</div>
+        <div className="sections">
+          <div className="section">
+            <div className={classnames('button', {disabled: !connected || !loggedIn || gameId})} onClick={this.createMatch.bind(this)}>Create Match</div>
+            <div className={classnames('button', {disabled: !connected || !loggedIn || gameId})} onClick={this.findMatch.bind(this)}>Find Match</div>
+            <div className={classnames('button', {disabled: !gameId || channelId})} onClick={this.joinMatch.bind(this)}>Join Match</div>
+            <div className={classnames('button', {disabled: !gameId || !channelId})} onClick={this.endMatch.bind(this)}>End Match</div>
+          </div>
+          <div className="section">
+            <Select name="SHARE_GUILD"
+                    value={this.state.shareGuildId}
+                    options={this.state.shareGuilds}
+                    clearable={false}
+                    optionRenderer={this.renderOption}
+                    valueRenderer={this.renderOption}
+                    onChange={this.handleSelectedShareGuild.bind(this)} />
+            <Select name="SHARE_CHANNELS"
+                    value={this.state.shareChannelId}
+                    options={this.state.shareChannels}
+                    clearable={false}
+                    onChange={this.handleSelectedShareChannel.bind(this)} />
+            <div className={classnames('button', {disabled: this.state.shareChannelId == null})} onClick={this.shareResults.bind(this)}>Share Results</div>
+          </div>
+        </div>
         <div className="voiparea">
           <div className="users">
             {voiceUsers}

@@ -10,6 +10,32 @@
   margin: 10px;
 }
 
+.sections {
+  display: flex;
+  flex-direction: row;
+}
+
+.Select {
+  margin-bottom: 10px;
+}
+
+.section {
+  margin: 10px;
+}
+
+.guild {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.guild-icon {
+  width: 25px;
+  height: 25px;
+  border-radius: 13px;
+  margin-right: 3px;
+}
+
 .button {
   background-color: #7289DA;
   color: #f0f0f0;
@@ -20,7 +46,7 @@
   align-content: center;
   width: 200px;
   height: 45px;
-  margin: 10px;
+  margin-bottom: 10px;
   user-select: none;
 
   transition: opacity 0.2s ease-in-out;
