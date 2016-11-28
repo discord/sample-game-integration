@@ -90,14 +90,26 @@ class App extends Component {
     return response.evt === 'ERROR' && (code ? response.data.code === code : true);
   }
 
-  discordRequest(route, body) {
-    request
-      .post(`https://discordapp.io:${this.state.ioPort}/${route}`)
-      .send(body)
-      .set('Authorization', `Bearer ${this.state.accessToken}`)
-      .end((err, res) => {
-        console.log('sent', err, res);
-      });
+  discordRequest(route, body, file) {
+    if (file) {
+      request
+        .post(`https://discordapp.io:${this.state.ioPort}/${route}`)
+        .set('Authorization', `Bearer ${this.state.accessToken}`)
+        .field('payload_json', JSON.stringify(body))
+        .attach('file', file, file.name)
+        .end((err, res) => {
+          console.log('sent', err, res);
+        });
+    }
+    else {
+      request
+        .post(`https://discordapp.io:${this.state.ioPort}/${route}`)
+        .set('Authorization', `Bearer ${this.state.accessToken}`)
+        .send(body)
+        .end((err, res) => {
+          console.log('sent', err, res);
+        });
+    }
   }
 
   // ----------------------------------------------------------------------------------------
@@ -370,6 +382,17 @@ class App extends Component {
   }
 
   shareResults() {
+    // There are two ways to attach an image or thumbnail to an embed:
+    //  1. You can use a URL that you are hosting somewhere as in the default case here.
+    //  2. You can upload a png, jpeg, or gif up to 8MB large as shown here when a file is chosen in the picker.
+    const shareFile = this.refs['SHARE_FILE'];
+    const hasEmbedAttachment = shareFile.files.length > 0;
+    const file = hasEmbedAttachment ? shareFile.files[0]: null;
+    let imageUrl = 'https://lolstatic-a.akamaihd.net/game-info/1.1.9/images/content/gi-modes-sr-the-battle-for-the-rift.jpg';
+    if (hasEmbedAttachment) {
+      imageUrl = `attachment://${file.name}`
+    }
+
     const embed = {
       title: `Defeat on Summoner's Rift`,
       description: 'Match results for a Diamond tier ranked game.',
@@ -388,7 +411,7 @@ class App extends Component {
         }
       ],
       image: {
-        url: 'https://lolstatic-a.akamaihd.net/game-info/1.1.9/images/content/gi-modes-sr-the-battle-for-the-rift.jpg'
+        url: imageUrl
       },
       footer: {
         text: `League of Legends`,
@@ -396,7 +419,7 @@ class App extends Component {
       }
     };
 
-    this.discordRequest(`channels/${this.state.shareChannelId}/messages`, {embed});
+    this.discordRequest(`channels/${this.state.shareChannelId}/messages`, {embed}, file);
   }
 
   disconnect() {
@@ -481,6 +504,12 @@ class App extends Component {
             <div className={classnames('button', {disabled: !gameId || !channelId})} onClick={this.endMatch.bind(this)}>End Match</div>
           </div>
           <div className="section">
+            <input className="file-share"
+                   ref='SHARE_FILE'
+                   type="file"
+                   accept={'image/*'}
+                   onChange={this.props.onChange}
+                   multiple={false} />
             <Select name="SHARE_GUILD"
                     value={this.state.shareGuildId}
                     options={this.state.shareGuilds}
