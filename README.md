@@ -147,9 +147,7 @@ sudo pip install virtualenv
 cd server
 virtualenv client
 . client/bin/activate
-pip install flask
-pip install flask-cors
-pip install requests
+pip install -r requirements.txt
 ```
 
 If you're on Windows, you'll have to follow the instructions on Flask's 
@@ -169,7 +167,7 @@ root folder:
 ```
 cd server
 . client/bin/activate
-export FLASK_DEBUG=1 ; export FLASK_APP=index.py ; flask run
+FLASK_DEBUG=1 FLASK_APP=index.py flask run
 ```
 
 _Note that if you called your virtualenv something different, you will need to use that instead. E.g., . venv/client/activate_
