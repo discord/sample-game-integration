@@ -13,8 +13,8 @@ let username = 'Jason';
 let startOffset = 0;
 
 // For example you can use for testing two users:
-// http://localhost:3006/illumina/0
-// http://localhost:3006/moonshed/1
+// http://localhost:3000/illumina/0
+// http://localhost:3000/moonshed/1
 if (window.location.pathname !== '/') {
   const params = window.location.pathname.split('/');
   if (params.length > 1) {

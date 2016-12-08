@@ -9,7 +9,7 @@ import ConfigParser
 app = Flask(__name__)
 CORS(app)  # don't do this in production
 
-BASE_URL = 'http://localhost:3000'
+BASE_URL = 'https://discordapp.com/api'
 
 config = ConfigParser.RawConfigParser()
 config.read('discord.cfg')
