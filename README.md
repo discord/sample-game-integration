@@ -90,8 +90,9 @@ the giant plus button.
 To configure your application to manage channels properly do this stuff:
 
 - Set a fun name like _Legend of the Apple Tree: Summary of Clouds_.
-- You can set an app icon later. Eventually this will show up as the
-    server or group icon on each user's Discord client.
+- You can set an app icon later. This will show up as the group icon on
+  a user's Discord client. Eventually it will auto-populate a server
+  icon if you make one instead.
 - For development purposes add the REDIRECT URI `http://localhost:3000`
 - For development purposes add the RPC ORIGIN `http://localhost:3000`
 - Click Save and you'll be whisked to your app's detail page.
