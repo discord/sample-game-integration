@@ -3,6 +3,10 @@ Here you'll find an almost production grade sample of using Discord's API
 and local RPC socket to add Voice and Text chat to a match based multiplayer 
 game.
 
+There is also sample code that shows how to build a share feature
+that embeds an image (such as a screenshot from your game client) in a chat
+message, but this readme does not walk through it just yet :-)
+
 These steps will be the same if you're using the GameBridge SDK, except
 you will connect to the RPC local to your game.
 
