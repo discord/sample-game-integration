@@ -272,7 +272,7 @@ class App extends Component {
   // ----------------------------------------------------------------------------------------
   // UI Actions
   // ----------------------------------------------------------------------------------------
-  connect(ignored, portOffset=0) {
+  connect(portOffset=0) {
     if (this.socket) {
       this.disconnect();
     }
@@ -436,6 +436,10 @@ class App extends Component {
   // ----------------------------------------------------------------------------------------
   // UI Event Handlers
   // ----------------------------------------------------------------------------------------
+  onHandleConnect() {
+    this.connect();
+  }
+
   onKeyUp(e) {
     if (e.keyCode === 13 /* enter */) {
       let inputBox = this.refs['INPUT_BOX'];
@@ -494,7 +498,7 @@ class App extends Component {
     return (
       <div className="App">
         <div className="status">{this.state.message}</div>
-        <div className={classnames('button', {disabled: connected})} onClick={this.connect.bind(this)}>Connect to Discord</div>
+        <div className={classnames('button', {disabled: connected})} onClick={this.onHandleConnect.bind(this)}>Connect to Discord</div>
         <div className={classnames('button', {disabled: !connected})} onClick={this.disconnect.bind(this)}>Disconnect</div>
         <div className="sections">
           <div className="section">

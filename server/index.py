@@ -54,7 +54,7 @@ class User:
 class Game:
     def __init__(self):
         self.id = 0
-        self.guild_id = None
+        self.channel_id = None
 
 data = {
     'counter': 0,
@@ -158,7 +158,7 @@ def find_match():
 def create_match():
     game = Game()
     game.id = create_id()
-    game.guild_id = None
+    game.channel_id = None
     data['games'].append(game)
     save()
 
@@ -175,35 +175,31 @@ def join_match(game_id):
     if game is None:
         abort(400, 'Invalid game_id')
 
-    guild_id = game.guild_id
-
-    if guild_id is None:
-        permissions = (READ_MESSAGES | SEND_MESSAGES | READ_MESSAGE_HISTORY | CONNECT | SPEAK | USE_VAD)
-        create_match_data = {
-            'name': 'Testing This',
-            'region': 'us-west',
-            'icon': '',
-            'roles': [{
-                'id': 0,
-                'p': permissions
-            }]
-        }
-        r = requests.post(BASE_URL + '/guilds', headers=HEADERS, json=create_match_data)
-        r.raise_for_status()
-        guild_id = r.json()['id']
-        game.guild_id = guild_id
-        save()
-
     if user.expires_at < time():
         user = refresh_access_token(user)
 
-    add_to_server = {
-        'access_token': user.access_token
-    }
-    r = requests.put(BASE_URL + '/guilds/{0}/members/{1}'.format(guild_id, discord_id),
-                     headers=HEADERS, json=add_to_server)
-    r.raise_for_status()
-    return json.dumps({'guild_id': guild_id})
+    channel_id = game.channel_id
+
+    if channel_id is None:
+        create_match_data = {
+            'access_tokens': [user.access_token],
+            'nicks': {user.discord_id: user.id}
+        }
+        r = requests.post(BASE_URL + '/users/@me/channels', headers=HEADERS, json=create_match_data)
+        r.raise_for_status()
+        channel_id = r.json()['id']
+        game.channel_id = channel_id
+        save()
+    else:
+        add_to_server = {
+            'access_token': user.access_token,
+            'nick': user.id
+        }
+        r = requests.put(BASE_URL + '/channels/{0}/recipients/{1}'.format(channel_id, user.discord_id),
+                         headers=HEADERS, json=add_to_server)
+        r.raise_for_status()
+
+    return json.dumps({'channel_id': channel_id})
 
 
 @app.route('/end_match', methods=['POST'])
@@ -214,16 +210,12 @@ def end_match():
 
 @app.route('/delete_all_servers')
 def delete_all_games():
+    games = data['games']
     data['games'] = []
     save()
 
-    r = requests.get(BASE_URL + '/users/@me/guilds', headers=HEADERS)
-    r.raise_for_status()
-    guilds = r.json()
-    for guild in guilds:
-        if guild['owner'] is True:
-            r = requests.delete(BASE_URL + '/guilds/{0}'.format(guild['id']), headers=HEADERS)
-            r.raise_for_status()
+    for game in games:
+        requests.delete(BASE_URL + '/channels/{0}'.format(game.channel_id), headers=HEADERS)
 
     return ''
 
@@ -252,7 +244,7 @@ def discord_exchange_token():
     exchange_code = {
         'grant_type': 'authorization_code',
         'code': code,
-        'redirect_uri': 'http://localhost:3000',
+        'redirect_uri': REDIRECT_URI,
         'client_id': CLIENT_ID
     }
     r = requests.post(BASE_URL + '/oauth2/token', headers=HEADERS, data=exchange_code)
