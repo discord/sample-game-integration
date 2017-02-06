@@ -245,7 +245,8 @@ def discord_exchange_token():
         'grant_type': 'authorization_code',
         'code': code,
         'redirect_uri': REDIRECT_URI,
-        'client_id': CLIENT_ID
+        'client_id': CLIENT_ID,
+        'client_secret': CLIENT_SECRET
     }
     r = requests.post(BASE_URL + '/oauth2/token', headers=HEADERS, data=exchange_code)
     r.raise_for_status()
