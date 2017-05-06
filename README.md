@@ -1,6 +1,6 @@
 # Overview
-Here you'll find an almost production grade sample of using Discord's API 
-and local RPC socket to add Voice and Text chat to a match based multiplayer 
+Here you'll find an almost production grade sample of using Discord's API
+and local RPC socket to add Voice and Text chat to a match based multiplayer
 game.
 
 There is also sample code that shows how to build a share feature
@@ -97,7 +97,7 @@ To configure your application to manage channels properly do this stuff:
 - You can set an app icon later. This will show up as the group icon on
   a user's Discord client. Eventually it will auto-populate a server
   icon if you make one instead.
-- For development purposes add the REDIRECT URI `http://localhost:3000`
+- For development purposes add the REDIRECT URI `http://localhost:3006`
 - For development purposes add the RPC ORIGIN `http://localhost:3000`
 - Click Save and you'll be whisked to your app's detail page.
 - Click `Create a Bot User` and accept the confirmation.
@@ -147,11 +147,11 @@ virtualenv client
 pip install -r requirements.txt
 ```
 
-If you're on Windows, you'll have to follow the instructions on Flask's 
+If you're on Windows, you'll have to follow the instructions on Flask's
 site. I haven't tried it :-)
 
 ### Running the Sample Client
-Open a Terminal / Shell window to keep running. From the project's 
+Open a Terminal / Shell window to keep running. From the project's
 root folder:
 ```
 cd client
@@ -159,7 +159,7 @@ npm start
 ```
 
 ### Running the Sample Server
-Open a Terminal / Shell window to keep running. From the project's 
+Open a Terminal / Shell window to keep running. From the project's
 root folder:
 ```
 cd server
