@@ -292,7 +292,7 @@ class App extends Component {
 
     this.socket.onclose = (e) => {
       const wasConnected = this.state.connected;
-      this.setState({'message': `Closed ${e.code} ${e.message}`, loggedIn: false, connected: false, channelId: null});
+      this.setState({'message': `Closed ${e.code} ${e.reason}`, loggedIn: false, connected: false, channelId: null});
 
       if (wasConnected === false) {
         if (portOffset < NUM_PORTS_TO_SEARCH) {
