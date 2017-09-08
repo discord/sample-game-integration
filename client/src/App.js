@@ -93,7 +93,7 @@ class App extends Component {
   discordRequest(route, body, file) {
     if (file) {
       request
-        .post(`https://discordapp.io:${this.state.ioPort}/${route}`)
+        .post(`http://127.0.0.1:${this.state.ioPort}/${route}`)
         .set('Authorization', `Bearer ${this.state.accessToken}`)
         .field('payload_json', JSON.stringify(body))
         .attach('file', file, file.name)
@@ -103,7 +103,7 @@ class App extends Component {
     }
     else {
       request
-        .post(`https://discordapp.io:${this.state.ioPort}/${route}`)
+        .post(`http://127.0.0.1:${this.state.ioPort}/${route}`)
         .set('Authorization', `Bearer ${this.state.accessToken}`)
         .send(body)
         .end((err, res) => {
@@ -278,7 +278,7 @@ class App extends Component {
     }
 
     const portAttempt = PORT + portOffset;
-    this.socket = new WebSocket(`wss://discordapp.io:${portAttempt}/?v=${VERSION}&client_id=${CLIENT_ID}&encoding=${ENCODING}`);
+    this.socket = new WebSocket(`ws://127.0.0.1:${portAttempt}/?v=${VERSION}&client_id=${CLIENT_ID}&encoding=${ENCODING}`);
 
     this.socket.onmessage = this.handleDiscordRPCResponse.bind(this);
 
