@@ -134,7 +134,7 @@ the `APP BOT USER` section.
 
 Next you'll need to setup and install Flask, the web framework used by
 this sample. Detailed instructions are available here
-http://flask.pocoo.org/docs/0.11/installation/.
+https://flask.palletsprojects.com/en/1.1.x/installation/
 
 Be sure to activate your virtual environment then install the python
 packages in addition to flask. If you're feeling lazy it's basically
